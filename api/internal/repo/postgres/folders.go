@@ -341,7 +341,7 @@ func (s *Store) ListFolder(ctx context.Context, p auth.Principal, folderID, path
 			return nil, false, nil, err
 		}
 		for _, r := range docs {
-			d := docFromFolderListing(r)
+			d := folderDocEntryFromRow(r)
 			out = append(out, repo.FolderEntry{Type: "document", Document: &d})
 		}
 		f, err := s.GetFolder(ctx, parent)
@@ -453,13 +453,13 @@ func (s *Store) MoveDocumentToRoot(ctx context.Context, folderID, docID string) 
 	return s.q.MoveDocumentToRoot(ctx, dbsqlc.MoveDocumentToRootParams{DocumentID: docID, FolderID: folderID})
 }
 
-func (s *Store) ListFolderDocuments(ctx context.Context, p auth.Principal, folderID string) ([]repo.Document, error) {
+func (s *Store) ListFolderDocuments(ctx context.Context, p auth.Principal, folderID string) ([]repo.FolderDocumentEntry, error) {
 	rows, err := s.q.ListFolderDocuments(ctx, folderID)
 	if err != nil {
 		return nil, err
 	}
 	if len(rows) == 0 {
-		return []repo.Document{}, nil
+		return []repo.FolderDocumentEntry{}, nil
 	}
 
 	// Bulk-resolve the caller's effective role for every document in one pass.
@@ -488,17 +488,17 @@ func (s *Store) ListFolderDocuments(ctx context.Context, p auth.Principal, folde
 		}
 	}
 
-	out := make([]repo.Document, 0, len(rows))
+	out := make([]repo.FolderDocumentEntry, 0, len(rows))
 	for _, r := range rows {
-		d := docFromFolderListing(r)
+		d := folderDocEntryFromRow(r)
 		d.CallerRole = roleByDoc[r.ID]
 		out = append(out, d)
 	}
 	return out, nil
 }
 
-func docFromFolderListing(r dbsqlc.ListFolderDocumentsRow) repo.Document {
-	return repo.Document{
+func folderDocEntryFromRow(r dbsqlc.ListFolderDocumentsRow) repo.FolderDocumentEntry {
+	return repo.FolderDocumentEntry{
 		ID:               r.ID,
 		Title:            r.Title,
 		CurrentVersionID: r.CurrentVersionID,

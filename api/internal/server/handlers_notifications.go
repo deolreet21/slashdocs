@@ -107,21 +107,27 @@ func (h handlers) requestDocumentAccess(c *gin.Context) {
 
 // listDocumentAccessRequests godoc
 // @Summary List pending access requests for a document
-// @Description Returns the list of principals who have requested access. Requires owner role.
+// @Description Returns up to 100 requests ordered by requested_at descending. Pass next_page_token as the "after" query parameter to retrieve the next page.
 // @Tags documents
 // @Security bearerAuth
 // @Security cookieAuth
 // @Param id path string true "Document ID"
+// @Param after query string false "RFC3339 cursor — last requested_at from the previous page"
 // @Success 200 {object} map[string]any
 // @Router /v1/documents/{id}/access-requests [get]
 func (h handlers) listDocumentAccessRequests(c *gin.Context) {
 	if !h.needDocRole(c, c.Param("id"), repo.RoleOwner) {
 		return
 	}
-	requests, err := h.deps.repository.ListAccessRequests(c.Request.Context(), c.Param("id"))
+	after := c.Query("after")
+	requests, err := h.deps.repository.ListAccessRequests(c.Request.Context(), c.Param("id"), after)
 	if err != nil {
 		internalErr(c, err)
 		return
 	}
-	c.JSON(http.StatusOK, listResponse[repo.AccessRequest]{Items: requests})
+	var nextPageToken string
+	if len(requests) == 100 {
+		nextPageToken = requests[len(requests)-1].RequestedAt
+	}
+	c.JSON(http.StatusOK, gin.H{"items": requests, "next_page_token": nextPageToken})
 }

@@ -500,6 +500,13 @@ func TestDocumentAccessRequestNotification(t *testing.T) {
 	if err := store.Pool().QueryRow(ctx, "SELECT count(*) FROM document_access_request_notification_outbox").Scan(&queued); err != nil || queued != 1 {
 		t.Fatalf("queued=%d err=%v, want one owner notification", queued, err)
 	}
+	// Second request while the outbox row still exists must be a no-op (upsert, not insert).
+	if _, err := store.RequestDocumentAccess(ctx, requester, doc.ID); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Pool().QueryRow(ctx, "SELECT count(*) FROM document_access_request_notification_outbox").Scan(&queued); err != nil || queued != 1 {
+		t.Fatalf("pre-delivery repeat: queued=%d err=%v, want upsert no-op (still 1)", queued, err)
+	}
 	sender := &recordingSender{}
 	w := Worker{Store: store, Sender: sender, AppOrigin: "https://slashdocs.example.com"}
 	if err := w.DeliverNextDocumentAccessRequest(ctx); err != nil {
