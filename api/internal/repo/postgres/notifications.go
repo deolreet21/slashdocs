@@ -257,10 +257,11 @@ func (s *Store) RequestDocumentAccess(ctx context.Context, requester auth.Princi
 func (s *Store) ListAccessRequests(ctx context.Context, documentID string) ([]repo.AccessRequest, error) {
 	rows, err := s.db.Query(ctx, `
 		SELECT r.requester_type, r.requester_id, r.requested_at,
-		       COALESCE(u.name, '') AS requester_name,
+		       COALESCE(u.name, sa.name, '') AS requester_name,
 		       COALESCE(u.email, '') AS requester_email
 		FROM document_access_requests r
 		LEFT JOIN users u ON r.requester_type='user' AND u.id=r.requester_id
+		LEFT JOIN service_accounts sa ON r.requester_type='service_account' AND sa.id=r.requester_id -- nosemgrep: detected-google-gcm-service-account - slashdocs-native principal type/table, not a Google credential.
 		WHERE r.document_id=$1
 		ORDER BY r.requested_at DESC
 		LIMIT 100`, documentID)
