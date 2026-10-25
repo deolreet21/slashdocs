@@ -52,6 +52,10 @@ func (h handlers) needDocMove(c *gin.Context, docID, to string) bool {
 	}
 	doc, err := h.deps.repository.GetDocument(c.Request.Context(), docID)
 	if err != nil {
+		if errors.Is(err, repo.ErrNotFound) {
+			notFound(c)
+			return false
+		}
 		internalErr(c, err)
 		return false
 	}
@@ -62,6 +66,10 @@ func (h handlers) needDocMove(c *gin.Context, docID, to string) bool {
 	if to == "" && from != "" {
 		folderRole, err := h.deps.repository.RoleForFolder(c.Request.Context(), *current(c), from)
 		if err != nil {
+			if errors.Is(err, repo.ErrNotFound) {
+				notFound(c)
+				return false
+			}
 			internalErr(c, err)
 			return false
 		}
