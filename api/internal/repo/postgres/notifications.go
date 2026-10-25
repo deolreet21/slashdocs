@@ -207,17 +207,23 @@ func (s *Store) RequestDocumentAccess(ctx context.Context, requester auth.Princi
 	}
 	defer rollback(ctx, tx)
 	// Always persist the request so owners can discover it regardless of whether
-	// a notification channel is configured.
-	_, err = tx.Exec(ctx, `INSERT INTO document_access_requests(document_id,requester_type,requester_id)
+	// a notification channel is configured. RETURNING document_id tells us
+	// whether the row was actually written (new request or one older than 24 h).
+	// When the upsert is a no-op (within the 24-hour window) no row is returned
+	// and we must not fire a new notification.
+	var insertedDocID string
+	err = tx.QueryRow(ctx, `INSERT INTO document_access_requests(document_id,requester_type,requester_id)
 		SELECT d.id,$2,$3 FROM documents d WHERE d.id=$1
 		ON CONFLICT(document_id,requester_type,requester_id) DO UPDATE SET requested_at=now()
-		WHERE document_access_requests.requested_at <= now()-interval '24 hours'`,
-		documentID, requester.Type, requester.ID)
-	if err != nil {
+		WHERE document_access_requests.requested_at <= now()-interval '24 hours'
+		RETURNING document_id`,
+		documentID, requester.Type, requester.ID).Scan(&insertedDocID)
+	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
 		return repo.AccessRequestResult{Status: "recorded"}, err
 	}
-	// Only enqueue a notification when a delivery channel is available.
-	if s.notificationsEnabled {
+	// Only enqueue a notification when a delivery channel is available AND the
+	// row was actually written (new or refreshed after the 24-hour window).
+	if s.notificationsEnabled && insertedDocID != "" {
 		_, err = tx.Exec(ctx, `WITH recipient AS (
 			SELECT CASE WHEN d.owner_type='user' THEN d.owner_id ELSE sa.owner_user_id END AS user_id
 			FROM document_access_requests r JOIN documents d ON d.id=r.document_id
