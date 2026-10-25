@@ -274,6 +274,49 @@ func TestOutboxDeliveryPreferencesAndAccess(t *testing.T) {
 	}
 }
 
+func TestAccessRequestPersistedWithoutNotificationChannel(t *testing.T) {
+	ctx := context.Background()
+	store, err := pgrepo.Connect(ctx, testdb.New(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	// Deliberately leave notificationsEnabled=false (default after Connect).
+	owner, err := store.UpsertGoogleUser(ctx, "persist-owner", "persist-owner@example.com", "Owner", "persist-owner-sub", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	requester, err := store.UpsertGoogleUser(ctx, "persist-reader", "persist-reader@example.com", "Reader", "persist-reader-sub", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	doc, _, err := store.CreateDocument(ctx, owner, "Persist test", []byte("<p>Private</p>"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := store.RequestDocumentAccess(ctx, requester, doc.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Status != "recorded" {
+		t.Fatalf("status = %q, want %q", result.Status, "recorded")
+	}
+	var rowCount int
+	if err := store.Pool().QueryRow(ctx, "SELECT count(*) FROM document_access_requests WHERE document_id=$1", doc.ID).Scan(&rowCount); err != nil {
+		t.Fatal(err)
+	}
+	if rowCount != 1 {
+		t.Fatalf("access request rows = %d, want 1 — row must be persisted even without a notification channel", rowCount)
+	}
+	var outboxCount int
+	if err := store.Pool().QueryRow(ctx, "SELECT count(*) FROM document_access_request_notification_outbox WHERE document_id=$1", doc.ID).Scan(&outboxCount); err != nil {
+		t.Fatal(err)
+	}
+	if outboxCount != 0 {
+		t.Fatalf("outbox rows = %d, want 0 — no notification must be queued when notificationsEnabled=false", outboxCount)
+	}
+}
+
 func TestCommentActorFallbacks(t *testing.T) {
 	tests := []struct {
 		name   string
