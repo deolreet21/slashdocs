@@ -174,13 +174,15 @@ func (s *Store) enqueueDocumentAccessChanges(ctx context.Context, tx pgx.Tx, doc
 // The access request row is always persisted so owners can see pending requests
 // even when no notification channel (Slack, etc.) is configured. The outbox
 // insert that triggers a Slack/email message is gated on notificationsEnabled.
-func (s *Store) RequestDocumentAccess(ctx context.Context, requester auth.Principal, documentID string) error {
+// The returned status distinguishes "recorded" (persisted only) from "notified"
+// (persisted and a Slack/email message was queued).
+func (s *Store) RequestDocumentAccess(ctx context.Context, requester auth.Principal, documentID string) (repo.AccessRequestResult, error) {
 	if requester.Type != auth.PrincipalUser && requester.Type != auth.PrincipalServiceAccount {
-		return nil
+		return repo.AccessRequestResult{Status: "recorded"}, nil
 	}
 	role, err := s.RoleForDocument(ctx, requester, documentID)
 	if err != nil || role != repo.RoleNone {
-		return err
+		return repo.AccessRequestResult{Status: "recorded"}, err
 	}
 	label := requester.Name
 	if requester.Email != "" {
@@ -193,15 +195,15 @@ func (s *Store) RequestDocumentAccess(ctx context.Context, requester auth.Princi
 		sa, lookupErr := s.GetServiceAccount(ctx, requester.ID)
 		if lookupErr != nil {
 			if errors.Is(lookupErr, repo.ErrNotFound) {
-				return nil
+				return repo.AccessRequestResult{Status: "recorded"}, nil
 			}
-			return lookupErr
+			return repo.AccessRequestResult{Status: "recorded"}, lookupErr
 		}
 		label = sa.Name
 	}
 	tx, err := s.db.Begin(ctx)
 	if err != nil {
-		return err
+		return repo.AccessRequestResult{Status: "recorded"}, err
 	}
 	defer rollback(ctx, tx)
 	// Always persist the request so owners can discover it regardless of whether
@@ -212,7 +214,7 @@ func (s *Store) RequestDocumentAccess(ctx context.Context, requester auth.Princi
 		WHERE document_access_requests.requested_at <= now()-interval '24 hours'`,
 		documentID, requester.Type, requester.ID)
 	if err != nil {
-		return err
+		return repo.AccessRequestResult{Status: "recorded"}, err
 	}
 	// Only enqueue a notification when a delivery channel is available.
 	if s.notificationsEnabled {
@@ -233,10 +235,17 @@ func (s *Store) RequestDocumentAccess(ctx context.Context, requester auth.Princi
 			attempts=0,available_at=now(),created_at=now()`,
 			documentID, requester.Type, requester.ID, label)
 		if err != nil {
-			return err
+			return repo.AccessRequestResult{Status: "recorded"}, err
 		}
+		if err := tx.Commit(ctx); err != nil {
+			return repo.AccessRequestResult{Status: "recorded"}, err
+		}
+		return repo.AccessRequestResult{Status: "notified"}, nil
 	}
-	return tx.Commit(ctx)
+	if err := tx.Commit(ctx); err != nil {
+		return repo.AccessRequestResult{Status: "recorded"}, err
+	}
+	return repo.AccessRequestResult{Status: "recorded"}, nil
 }
 
 func (s *Store) ListAccessRequests(ctx context.Context, documentID string) ([]repo.AccessRequest, error) {

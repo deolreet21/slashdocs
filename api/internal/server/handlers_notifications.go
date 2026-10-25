@@ -94,13 +94,15 @@ func (h handlers) setDocumentNotificationPreferences(c *gin.Context) { h.setNoti
 // @Success 202 {object} map[string]string
 // @Router /v1/documents/{id}/access-requests [post]
 func (h handlers) requestDocumentAccess(c *gin.Context) {
-	if err := h.deps.repository.RequestDocumentAccess(c.Request.Context(), *current(c), c.Param("id")); err != nil {
+	result, err := h.deps.repository.RequestDocumentAccess(c.Request.Context(), *current(c), c.Param("id"))
+	if err != nil {
 		internalErr(c, err)
 		return
 	}
-	// Keep the same response for missing, already-accessible, and recently
+	// Keep the same response shape for missing, already-accessible, and recently
 	// requested documents so this endpoint cannot be used for enumeration.
-	c.JSON(http.StatusAccepted, gin.H{"status": "recorded"})
+	// Status is "notified" when a Slack/email was queued, "recorded" otherwise.
+	c.JSON(http.StatusAccepted, gin.H{"status": result.Status})
 }
 
 // listDocumentAccessRequests godoc

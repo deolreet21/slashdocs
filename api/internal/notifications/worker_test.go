@@ -450,7 +450,7 @@ func TestDocumentAccessRequestNotification(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := store.RequestDocumentAccess(ctx, requester, doc.ID); err != nil {
+	if _, err := store.RequestDocumentAccess(ctx, requester, doc.ID); err != nil {
 		t.Fatal(err)
 	}
 	var queued int
@@ -466,7 +466,7 @@ func TestDocumentAccessRequestNotification(t *testing.T) {
 		sender.messages[0].Requester != "Reader (reader@example.com)" || sender.messages[0].DocumentTitle != doc.Title {
 		t.Fatalf("wrong access request notification: emails=%v messages=%+v", sender.emails, sender.messages)
 	}
-	if err := store.RequestDocumentAccess(ctx, requester, doc.ID); err != nil {
+	if _, err := store.RequestDocumentAccess(ctx, requester, doc.ID); err != nil {
 		t.Fatal(err)
 	}
 	if err := store.Pool().QueryRow(ctx, "SELECT count(*) FROM document_access_request_notification_outbox").Scan(&queued); err != nil || queued != 0 {

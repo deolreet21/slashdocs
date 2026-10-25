@@ -64,6 +64,11 @@ export function ShareSheet({
     queryKey: accessKey,
     queryFn: () => (isFolder ? api.folderAccess(id) : api.documentAccess(id)),
   });
+  const pendingRequests = useQuery({
+    queryKey: queryKeys.accessRequests(id),
+    queryFn: () => api.listAccessRequests(id),
+    enabled: !isFolder && canManageAccess && !!id,
+  });
   const config = useQuery({
     queryKey: queryKeys.config(),
     queryFn: () => api.getConfig(),
@@ -346,6 +351,15 @@ export function ShareSheet({
           </div>
         ) : (
           <>
+            {canManageAccess && !isFolder && (pendingRequests.data?.items.length ?? 0) > 0 ? (
+              <div className="mb-4 flex items-center justify-between gap-3 rounded-lg border border-[var(--color-warning-border)] bg-[var(--color-warning-bg,var(--color-surface-muted))] px-3 py-2.5 text-sm">
+                <span className="font-medium">
+                  {pendingRequests.data!.items.length === 1
+                    ? "1 pending access request"
+                    : `${pendingRequests.data!.items.length} pending access requests`}
+                </span>
+              </div>
+            ) : null}
             {!canManageAccess ? (
               <div
                 id="share-read-only-note"

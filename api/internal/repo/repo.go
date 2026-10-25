@@ -344,18 +344,25 @@ type DocumentKVEvent struct {
 // against a disposable database (see api/internal/testdb) rather than an
 // AccessRequest is a pending request from a principal to the document owner.
 type AccessRequest struct {
-	RequesterType string `json:"requester_type"`
-	RequesterID   string `json:"requester_id"`
-	RequesterName string `json:"requester_name,omitempty"`
+	RequesterType  string `json:"requester_type"`
+	RequesterID    string `json:"requester_id"`
+	RequesterName  string `json:"requester_name,omitempty"`
 	RequesterEmail string `json:"requester_email,omitempty"`
-	RequestedAt   string `json:"requested_at"`
+	RequestedAt    string `json:"requested_at"`
+}
+
+// AccessRequestResult is returned by RequestDocumentAccess. Status is
+// "recorded" when the row was persisted but no notification channel is
+// configured, and "notified" when a Slack/email message was also queued.
+type AccessRequestResult struct {
+	Status string `json:"status"` // "recorded" | "notified"
 }
 
 // in-memory fake, so test behaviour cannot drift from production.
 type Repository interface {
 	NotificationPreferences(ctx context.Context, principal auth.Principal, documentID string) (NotificationPreferences, error)
 	SetNotificationPreferences(ctx context.Context, principal auth.Principal, documentID string, enabled bool) (NotificationPreferences, error)
-	RequestDocumentAccess(ctx context.Context, principal auth.Principal, documentID string) error
+	RequestDocumentAccess(ctx context.Context, principal auth.Principal, documentID string) (AccessRequestResult, error)
 	ListAccessRequests(ctx context.Context, documentID string) ([]AccessRequest, error)
 	ResolveBearerToken(ctx context.Context, tokenHash string) (auth.Principal, error)
 	ResolveUser(ctx context.Context, id string) (auth.Principal, error)

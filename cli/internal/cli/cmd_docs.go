@@ -50,7 +50,12 @@ func documentRequestAccessCmd(g *globals, out io.Writer) *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return action(g, out, func(c *Client) ([]byte, error) {
 				return c.doJSON("POST", apiPath("/v1/documents/%s/access-requests", args[0]), map[string]any{})
-			}, func(map[string]any) string { return "Access request recorded for " + args[0] + ". The owner can see it in the sharing panel." })
+			}, func(res map[string]any) string {
+				if res["status"] == "notified" {
+					return "Access request sent for " + args[0] + ". The owner has been notified."
+				}
+				return "Access request recorded for " + args[0] + ". The owner can see it in the sharing panel."
+			})
 		},
 	}
 }
