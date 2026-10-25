@@ -170,12 +170,15 @@ func (s *Store) enqueueDocumentAccessChanges(ctx context.Context, tx pgx.Tx, doc
 
 // RequestDocumentAccess deliberately returns no existence or owner detail. A
 // repeated request within 24 hours is accepted but does not notify again.
+// The access request row is always persisted so owners can see pending requests
+// even when no notification channel (Slack, etc.) is configured. The outbox
+// insert that triggers a Slack/email message is gated on notificationsEnabled.
 func (s *Store) RequestDocumentAccess(ctx context.Context, requester auth.Principal, documentID string) error {
 	if requester.Type != auth.PrincipalUser && requester.Type != auth.PrincipalServiceAccount {
 		return nil
 	}
 	role, err := s.RoleForDocument(ctx, requester, documentID)
-	if err != nil || role != repo.RoleNone || !s.notificationsEnabled {
+	if err != nil || role != repo.RoleNone {
 		return err
 	}
 	label := requester.Name
@@ -200,28 +203,37 @@ func (s *Store) RequestDocumentAccess(ctx context.Context, requester auth.Princi
 		return err
 	}
 	defer rollback(ctx, tx)
-	_, err = tx.Exec(ctx, `WITH requested AS (
-		INSERT INTO document_access_requests(document_id,requester_type,requester_id)
+	// Always persist the request so owners can discover it regardless of whether
+	// a notification channel is configured.
+	_, err = tx.Exec(ctx, `INSERT INTO document_access_requests(document_id,requester_type,requester_id)
 		SELECT d.id,$2,$3 FROM documents d WHERE d.id=$1
 		ON CONFLICT(document_id,requester_type,requester_id) DO UPDATE SET requested_at=now()
-		WHERE document_access_requests.requested_at <= now()-interval '24 hours'
-		RETURNING document_id
-	), recipient AS (
-		SELECT CASE WHEN d.owner_type='user' THEN d.owner_id ELSE sa.owner_user_id END AS user_id
-		FROM requested r JOIN documents d ON d.id=r.document_id
-		LEFT JOIN service_accounts sa ON d.owner_type='service_account' AND sa.id=d.owner_id -- nosemgrep: detected-google-gcm-service-account - slashdocs-native principal type/table, not a Google credential.
-	)
-	INSERT INTO document_access_request_notification_outbox
-		(document_id,requester_type,requester_id,requester_label,recipient_id)
-	SELECT $1,$2,$3,$4,recipient.user_id FROM recipient
-	WHERE recipient.user_id IS NOT NULL AND NOT ($2='user' AND recipient.user_id=$3)
-	AND NOT EXISTS(SELECT 1 FROM notification_preferences p WHERE p.principal_type='user' AND p.principal_id=recipient.user_id AND NOT p.enabled)
-	AND NOT EXISTS(SELECT 1 FROM document_notification_mutes m WHERE m.principal_type='user' AND m.principal_id=recipient.user_id AND m.document_id=$1)
-	ON CONFLICT(document_id,requester_type,requester_id) DO UPDATE SET
-		requester_label=excluded.requester_label,recipient_id=excluded.recipient_id,
-		attempts=0,available_at=now(),created_at=now()`, documentID, requester.Type, requester.ID, label)
+		WHERE document_access_requests.requested_at <= now()-interval '24 hours'`,
+		documentID, requester.Type, requester.ID)
 	if err != nil {
 		return err
+	}
+	// Only enqueue a notification when a delivery channel is available.
+	if s.notificationsEnabled {
+		_, err = tx.Exec(ctx, `WITH recipient AS (
+			SELECT CASE WHEN d.owner_type='user' THEN d.owner_id ELSE sa.owner_user_id END AS user_id
+			FROM document_access_requests r JOIN documents d ON d.id=r.document_id
+			LEFT JOIN service_accounts sa ON d.owner_type='service_account' AND sa.id=d.owner_id -- nosemgrep: detected-google-gcm-service-account - slashdocs-native principal type/table, not a Google credential.
+			WHERE r.document_id=$1 AND r.requester_type=$2 AND r.requester_id=$3
+		)
+		INSERT INTO document_access_request_notification_outbox
+			(document_id,requester_type,requester_id,requester_label,recipient_id)
+		SELECT $1,$2,$3,$4,recipient.user_id FROM recipient
+		WHERE recipient.user_id IS NOT NULL AND NOT ($2='user' AND recipient.user_id=$3)
+		AND NOT EXISTS(SELECT 1 FROM notification_preferences p WHERE p.principal_type='user' AND p.principal_id=recipient.user_id AND NOT p.enabled)
+		AND NOT EXISTS(SELECT 1 FROM document_notification_mutes m WHERE m.principal_type='user' AND m.principal_id=recipient.user_id AND m.document_id=$1)
+		ON CONFLICT(document_id,requester_type,requester_id) DO UPDATE SET
+			requester_label=excluded.requester_label,recipient_id=excluded.recipient_id,
+			attempts=0,available_at=now(),created_at=now()`,
+			documentID, requester.Type, requester.ID, label)
+		if err != nil {
+			return err
+		}
 	}
 	return tx.Commit(ctx)
 }
