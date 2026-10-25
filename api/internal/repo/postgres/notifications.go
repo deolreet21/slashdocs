@@ -262,7 +262,8 @@ func (s *Store) ListAccessRequests(ctx context.Context, documentID string) ([]re
 		FROM document_access_requests r
 		LEFT JOIN users u ON r.requester_type='user' AND u.id=r.requester_id
 		WHERE r.document_id=$1
-		ORDER BY r.requested_at DESC`, documentID)
+		ORDER BY r.requested_at DESC
+		LIMIT 100`, documentID)
 	if err != nil {
 		return nil, err
 	}
