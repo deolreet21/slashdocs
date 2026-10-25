@@ -197,7 +197,7 @@ func (s *Store) RequestDocumentAccess(ctx context.Context, requester auth.Princi
 			if errors.Is(lookupErr, repo.ErrNotFound) {
 				return repo.AccessRequestResult{Status: "recorded"}, nil
 			}
-			return repo.AccessRequestResult{Status: "recorded"}, lookupErr
+			return repo.AccessRequestResult{}, lookupErr
 		}
 		label = sa.Name
 	}
