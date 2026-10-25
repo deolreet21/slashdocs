@@ -89,6 +89,11 @@ type Document struct {
 	ParentFolder     *FolderBreadcrumb `json:"parent_folder,omitempty"`
 	UpdatedAt        string            `json:"updated_at,omitempty"`
 	Labels           []string          `json:"labels,omitempty"`
+	// CallerRole is the effective role of the API caller on this document.
+	// It is only populated on the folder-documents listing endpoint.
+	// RoleNone ("") means the caller has no direct grant — they have access
+	// only via the parent folder's grants (i.e. the folder owner).
+	CallerRole Role `json:"caller_role"`
 	// Snippet is set in search results when the text matches. U+0002 and
 	// U+0003 surround each match.
 	Snippet string `json:"snippet,omitempty"`
@@ -458,6 +463,9 @@ type Repository interface {
 	FolderHasGrants(ctx context.Context, folderID string) (bool, error)
 	MoveDocumentToFolder(ctx context.Context, principal auth.Principal, folderID, documentID string) (bool, error)
 	MoveDocumentToRoot(ctx context.Context, folderID, documentID string) error
+	// ListFolderDocuments returns documents in folderID with CallerRole
+	// pre-populated for principal. It issues at most two queries (one for
+	// documents, one bulk grant lookup), never one per document.
 	ListFolderDocuments(ctx context.Context, principal auth.Principal, folderID string) ([]Document, error)
 	ListEffectiveAccess(ctx context.Context, resourceType, resourceID string) ([]EffectiveAccessItem, error)
 	ListPins(ctx context.Context, principal auth.Principal) ([]Pin, error)
