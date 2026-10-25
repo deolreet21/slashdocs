@@ -352,12 +352,38 @@ export function ShareSheet({
         ) : (
           <>
             {canManageAccess && !isFolder && (pendingRequests.data?.items.length ?? 0) > 0 ? (
-              <div className="mb-4 flex items-center justify-between gap-3 rounded-lg border border-[var(--color-warning-border)] bg-[var(--color-warning-bg,var(--color-surface-muted))] px-3 py-2.5 text-sm">
-                <span className="font-medium">
+              <div className="mb-4 rounded-lg border border-[var(--color-warning-border)] bg-[var(--color-warning-bg,var(--color-surface-muted))] px-3 py-2.5 text-sm">
+                <p className="font-medium">
                   {pendingRequests.data!.items.length === 1
                     ? "1 pending access request"
                     : `${pendingRequests.data!.items.length} pending access requests`}
-                </span>
+                </p>
+                <ul className="mt-2 space-y-1.5">
+                  {pendingRequests.data!.items.map((req) => {
+                    const label = req.requester_name || req.requester_email || req.requester_id;
+                    const detail = req.requester_name && req.requester_email ? req.requester_email : null;
+                    return (
+                      <li key={req.requester_type + ":" + req.requester_id} className="flex items-center justify-between gap-2">
+                        <div className="min-w-0">
+                          <span className="truncate text-sm font-medium">{label}</span>
+                          {detail ? <span className="ml-1.5 truncate text-xs text-[var(--color-fg-muted)]">{detail}</span> : null}
+                        </div>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="shrink-0"
+                          onClick={() => {
+                            const address = req.requester_email || req.requester_id;
+                            setAddress(address);
+                            setShareMode("people");
+                          }}
+                        >
+                          Grant access
+                        </Button>
+                      </li>
+                    );
+                  })}
+                </ul>
               </div>
             ) : null}
             {!canManageAccess ? (
