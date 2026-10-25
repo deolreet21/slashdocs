@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgtype"
 
 	"github.com/razorpay/slashdocs/api/internal/auth"
 	"github.com/razorpay/slashdocs/api/internal/repo"
@@ -236,6 +237,32 @@ func (s *Store) RequestDocumentAccess(ctx context.Context, requester auth.Princi
 		}
 	}
 	return tx.Commit(ctx)
+}
+
+func (s *Store) ListAccessRequests(ctx context.Context, documentID string) ([]repo.AccessRequest, error) {
+	rows, err := s.db.Query(ctx, `
+		SELECT r.requester_type, r.requester_id, r.requested_at,
+		       COALESCE(u.name, '') AS requester_name,
+		       COALESCE(u.email, '') AS requester_email
+		FROM document_access_requests r
+		LEFT JOIN users u ON r.requester_type='user' AND u.id=r.requester_id
+		WHERE r.document_id=$1
+		ORDER BY r.requested_at DESC`, documentID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []repo.AccessRequest
+	for rows.Next() {
+		var a repo.AccessRequest
+		var requestedAt pgtype.Timestamptz
+		if err := rows.Scan(&a.RequesterType, &a.RequesterID, &requestedAt, &a.RequesterName, &a.RequesterEmail); err != nil {
+			return nil, err
+		}
+		a.RequestedAt = requestedAt.Time.UTC().Format("2006-01-02T15:04:05Z")
+		out = append(out, a)
+	}
+	return out, rows.Err()
 }
 
 func (s *Store) NotificationPreferences(ctx context.Context, p auth.Principal, documentID string) (repo.NotificationPreferences, error) {

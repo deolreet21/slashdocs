@@ -342,11 +342,21 @@ type DocumentKVEvent struct {
 // Repository is the application persistence boundary, implemented by the
 // PostgreSQL store in repo/postgres. Tests exercise that same implementation
 // against a disposable database (see api/internal/testdb) rather than an
+// AccessRequest is a pending request from a principal to the document owner.
+type AccessRequest struct {
+	RequesterType string `json:"requester_type"`
+	RequesterID   string `json:"requester_id"`
+	RequesterName string `json:"requester_name,omitempty"`
+	RequesterEmail string `json:"requester_email,omitempty"`
+	RequestedAt   string `json:"requested_at"`
+}
+
 // in-memory fake, so test behaviour cannot drift from production.
 type Repository interface {
 	NotificationPreferences(ctx context.Context, principal auth.Principal, documentID string) (NotificationPreferences, error)
 	SetNotificationPreferences(ctx context.Context, principal auth.Principal, documentID string, enabled bool) (NotificationPreferences, error)
 	RequestDocumentAccess(ctx context.Context, principal auth.Principal, documentID string) error
+	ListAccessRequests(ctx context.Context, documentID string) ([]AccessRequest, error)
 	ResolveBearerToken(ctx context.Context, tokenHash string) (auth.Principal, error)
 	ResolveUser(ctx context.Context, id string) (auth.Principal, error)
 	UpsertGoogleUser(ctx context.Context, id, email, name, googleSub, pictureURL string) (auth.Principal, error)
