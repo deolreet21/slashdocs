@@ -453,14 +453,20 @@ func (s *Store) MoveDocumentToRoot(ctx context.Context, folderID, docID string) 
 	return s.q.MoveDocumentToRoot(ctx, dbsqlc.MoveDocumentToRootParams{DocumentID: docID, FolderID: folderID})
 }
 
-func (s *Store) ListFolderDocuments(ctx context.Context, _ auth.Principal, folderID string) ([]repo.Document, error) {
+func (s *Store) ListFolderDocuments(ctx context.Context, principal auth.Principal, folderID string) ([]repo.Document, error) {
 	rows, err := s.q.ListFolderDocuments(ctx, folderID)
 	if err != nil {
 		return nil, err
 	}
 	out := make([]repo.Document, 0, len(rows))
 	for _, r := range rows {
-		out = append(out, docFromFolderListing(r))
+		d := docFromFolderListing(r)
+		role, err := s.RoleForDocument(ctx, principal, d.ID)
+		if err != nil {
+			return nil, err
+		}
+		d.CallerRole = role
+		out = append(out, d)
 	}
 	return out, nil
 }
