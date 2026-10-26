@@ -93,9 +93,10 @@ type Document struct {
 	// U+0003 surround each match.
 	Snippet string `json:"snippet,omitempty"`
 	// CallerRole is set in folder document listings to the caller's effective
-	// role on the document. Empty string (RoleNone) means the caller has no
-	// direct access — they can see the entry because they own the folder.
-	CallerRole Role `json:"caller_role,omitempty"`
+	// role on the document. Always present in JSON (no omitempty) — empty string
+	// (RoleNone) means the caller has no direct grant but sees the entry because
+	// they own the containing folder.
+	CallerRole Role `json:"caller_role"`
 }
 
 type FolderBreadcrumb struct {
